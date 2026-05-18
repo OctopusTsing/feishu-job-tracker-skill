@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+*.log
+
+# Local tracker config should stay outside the repo by default, but ignore it
+# if a user overrides FEISHU_JOB_TRACKER_CONFIG into the project folder.
+.feishu-job-tracker.json
+
+# Local test artifacts
+tmp/
+*.tmp

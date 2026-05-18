@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feishu Job Tracker"
+  short_description: "Create and update a Feishu/Lark Base job application tracker from natural language."
+  default_prompt: "Use the Feishu Job Tracker skill to initialize a job-search tracking Base, add applications, update statuses, and produce weekly reviews."

@@ -13,7 +13,9 @@ Use the bundled script as the stable interface:
 python3 scripts/tracker.py <command> [options]
 ```
 
-Prefer `--dry-run` before any write. Show the user the proposed fields before creating or updating Feishu records.
+For record writes, use preview mode (`--dry-run`) as the single preview/confirmation step: show the proposed fields and ask once whether to write them. If the user already clearly asked to record or update the item, you may skip the extra confirmation and write directly after assembling validated fields. Keep explicit confirmation for destructive or permission-changing operations such as delete and owner transfer.
+
+When talking to non-technical users, never say "dry-run" or "干跑". Say "我先生成一份写入预览，不会修改飞书表格" or "我先预览一下将要写入的内容" instead. The CLI flag is still `--dry-run`, but user-facing language should be "预览" / "写入预览".
 
 ## First-Time Setup (Read This Before Bootstrapping)
 
@@ -121,11 +123,19 @@ Use `transfer-owner-to-user` only after explicit user confirmation. It transfers
 3. Add an application:
 
 ```bash
-python3 scripts/tracker.py search-duplicates --from-json /path/to/application.json --dry-run
-python3 scripts/tracker.py add-record --from-json /path/to/application.json --dry-run
-python3 scripts/tracker.py add-record --from-json /path/to/application.json
+python3 scripts/tracker.py search-duplicates --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}' --dry-run
+python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}' --dry-run
+python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}'
 python3 scripts/tracker.py delete-record --record-id <record_id>
 ```
+
+For large JD payloads, avoid temporary files by piping JSON:
+
+```bash
+printf '%s' '{"company":"腾讯","role":"产品实习","jd_text":"..."}' | python3 scripts/tracker.py add-record --from-stdin --dry-run
+```
+
+`--from-json /path/to/application.json` remains supported for backward compatibility.
 
 4. Update a status:
 
@@ -247,7 +257,7 @@ If they differ, that explains permission errors. The agent runtime app must be t
 
 - Never invent company, role, interview time, salary, or HR contact details.
 - Mark uncertain values as empty or `不确定`.
-- Confirm before writing records.
+- Avoid double confirmation for ordinary record creation/update. A preview plus one "write this?" question is enough; when the user's instruction already says to record/update it, validated record writes can proceed without another prompt.
 - Search for likely duplicates before adding when the tracker is configured.
 - If more than one existing record may match a status update, ask the user to choose.
 - Do not store resume files or sensitive contact details unless the user explicitly asks.

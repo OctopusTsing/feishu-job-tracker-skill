@@ -105,12 +105,12 @@ python3 scripts/tracker.py bootstrap
 | --- | --- |
 | “帮我初始化求职跟踪表” | `python3 scripts/tracker.py bootstrap` |
 | “我刚投了这个岗位” | 抽取 JSON -> `search-duplicates` -> `add-record` |
-| “我是不是已经保存过了？” | `search-duplicates --from-json application.json` |
+| “我是不是已经保存过了？” | `search-duplicates --inline '<json>'` |
 | “腾讯进一面了” | `normalize-status` -> 找到记录 -> `update-status` |
 | “总结这周求职进展” | `list-records` -> `weekly-review` |
 | “删掉这条记录” | `delete-record --record-id <record_id>` |
 
-所有写操作前，都要先展示预览并等待用户确认。
+普通记录写入使用“预览模式”作为唯一预览/确认点；如果用户已经明确说“帮我记录/更新”，Agent 可以在字段校验后直接写入。删除记录、转移所有者等高风险操作仍需明确确认。Agent 面向用户说明时不要说 `dry-run` 或“干跑”，应说“我先生成一份写入预览，不会修改飞书表格”。
 
 ## 内置表格模板
 
@@ -247,7 +247,7 @@ python3 scripts/tracker.py repair-template
 
 ### 新增投递记录
 
-创建 `application.json`：
+Agent 可以直接组装 JSON 并通过 `--inline` 或 `--from-stdin` 传入；下面是完整字段示例，仍然可以保存成 `application.json` 后用 `--from-json`：
 
 ```json
 {
@@ -270,17 +270,26 @@ python3 scripts/tracker.py repair-template
 }
 ```
 
-先查重：
+先查重，不需要中间文件：
 
 ```bash
-python3 scripts/tracker.py search-duplicates --from-json application.json
+python3 scripts/tracker.py search-duplicates --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}'
 ```
 
-确认后写入：
+预览并写入：
 
 ```bash
-python3 scripts/tracker.py add-record --from-json application.json
+python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}' --dry-run
+python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}'
 ```
+
+如果 JD 很长，可以从 stdin 传入，避免写临时 JSON 文件：
+
+```bash
+printf '%s' '{"company":"腾讯","role":"产品实习","jd_text":"..."}' | python3 scripts/tracker.py add-record --from-stdin --dry-run
+```
+
+`--from-json application.json` 仍然保留，兼容已有流程。
 
 ### 更新状态
 
@@ -303,7 +312,7 @@ python3 scripts/tracker.py update-status \
   --next-action "参加一面"
 ```
 
-如果还没有确定是哪条记录，先 dry-run 并让用户选择：
+如果还没有确定是哪条记录，先生成预览并让用户选择：
 
 ```bash
 python3 scripts/tracker.py update-status --company 腾讯 --role-keyword 产品 --status 一面 --dry-run
@@ -342,9 +351,8 @@ python3 scripts/tracker.py <command>
 
 1. 从用户自然语言或 JD 中抽取结构化字段。
 2. 先查重。
-3. 展示写入预览。
-4. 让用户确认。
-5. 写入飞书多维表格。
+3. 用预览模式展示写入预览。
+4. 根据用户原始意图或一次确认写入飞书多维表格。
 
 ## 身份与权限模型
 
@@ -359,7 +367,7 @@ python3 scripts/tracker.py <command>
 
 ```bash
 FEISHU_JOB_TRACKER_READ_AS=user python3 scripts/tracker.py list-records
-FEISHU_JOB_TRACKER_WRITE_AS=bot python3 scripts/tracker.py add-record --from-json application.json
+FEISHU_JOB_TRACKER_WRITE_AS=bot python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}'
 ```
 
 旧式统一覆盖也可用：
@@ -411,7 +419,7 @@ python3 scripts/tracker.py transfer-owner-to-user
 - 只写入用户或 Agent 明确提供的数据。
 - 默认不存储简历文件。
 - 本地只保存 Base 配置到 `~/.feishu-job-tracker.json`。
-- Agent 在写入前应先展示预览并等待用户确认。
+- Agent 应避免普通记录写入的双层确认；写入预览就是确认点。面向用户不要说 `dry-run` 或“干跑”。删除和权限变更仍需明确确认。
 
 ## 开源协议
 

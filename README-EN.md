@@ -105,12 +105,12 @@ Map natural language to deterministic commands:
 | --- | --- |
 | "Set up my job tracker" | `python3 scripts/tracker.py bootstrap` |
 | "I applied to this job" | Extract JSON -> `search-duplicates` -> `add-record` |
-| "Did I already save this?" | `search-duplicates --from-json application.json` |
+| "Did I already save this?" | `search-duplicates --inline '<json>'` |
 | "Tencent moved to first interview" | `normalize-status` -> find record -> `update-status` |
 | "Summarize this week" | `list-records` -> `weekly-review` |
 | "Remove this record" | `delete-record --record-id <record_id>` |
 
-Always show a preview and ask for confirmation before writing records.
+For ordinary record writes, use preview mode as the single preview/confirmation point. If the user already clearly asked to record or update the item, the agent may write after validating fields. Destructive actions and owner transfers still require explicit confirmation. When speaking to users, agents should not say `dry-run`; say "I'll generate a write preview first, without changing your Feishu table" instead.
 
 ## First-Time Setup
 
@@ -254,7 +254,7 @@ python3 scripts/tracker.py <command>
 
 ### Add an application
 
-Create `application.json`:
+Agents can assemble JSON directly and pass it with `--inline` or `--from-stdin`; the full example below can still be saved as `application.json` and used with `--from-json`:
 
 ```json
 {
@@ -277,17 +277,26 @@ Create `application.json`:
 }
 ```
 
-Preview duplicate search:
+Preview duplicate search without a temporary file:
 
 ```bash
-python3 scripts/tracker.py search-duplicates --from-json application.json
+python3 scripts/tracker.py search-duplicates --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}'
 ```
 
-Add the record:
+Preview and add the record:
 
 ```bash
-python3 scripts/tracker.py add-record --from-json application.json
+python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}' --dry-run
+python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}'
 ```
+
+For long JD payloads, pipe JSON through stdin to avoid temporary files:
+
+```bash
+printf '%s' '{"company":"腾讯","role":"产品实习","jd_text":"..."}' | python3 scripts/tracker.py add-record --from-stdin --dry-run
+```
+
+`--from-json application.json` remains supported for existing workflows.
 
 ### Update a status
 
@@ -310,7 +319,7 @@ python3 scripts/tracker.py update-status \
   --next-action "参加一面"
 ```
 
-If the record is not selected yet, run a dry-run first and ask the user to choose:
+If the record is not selected yet, generate a preview first and ask the user to choose:
 
 ```bash
 python3 scripts/tracker.py update-status --company 腾讯 --role-keyword 产品 --status 一面 --dry-run
@@ -349,9 +358,8 @@ Recommended interaction pattern:
 
 1. Extract structured fields from user text or JD.
 2. Search for duplicates.
-3. Show a write preview.
-4. Ask the user to confirm.
-5. Write to Feishu/Lark Base.
+3. Show a write preview in preview mode.
+4. Write to Feishu/Lark Base according to the user's original intent or a single confirmation.
 
 ## Identity Model
 
@@ -363,8 +371,8 @@ The helper defaults to:
 The `auto` mode checks `lark-cli auth status` at runtime and picks the appropriate identity automatically. You can override it with environment variables:
 
 ```bash
-FEISHU_JOB_TRACKER_WRITE_AS=user python3 scripts/tracker.py add-record --from-json application.json
-FEISHU_JOB_TRACKER_WRITE_AS=bot python3 scripts/tracker.py add-record --from-json application.json
+FEISHU_JOB_TRACKER_WRITE_AS=user python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}'
+FEISHU_JOB_TRACKER_WRITE_AS=bot python3 scripts/tracker.py add-record --inline '{"company":"字节跳动","role":"AI 产品实习生","status":"已投递"}'
 ```
 
 Legacy override:
@@ -409,7 +417,7 @@ The test record was deleted after verification.
 - It only writes data the user or agent explicitly provides.
 - It does not store resume files by default.
 - It stores only local Base configuration in `~/.feishu-job-tracker.json`.
-- Agents should ask for confirmation before writes.
+- Agents should avoid double confirmation for ordinary record writes; the write preview is the confirmation point. Do not say `dry-run` to users. Destructive actions and permission changes still require explicit confirmation.
 
 ## License
 

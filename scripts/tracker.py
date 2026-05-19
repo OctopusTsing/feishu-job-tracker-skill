@@ -72,6 +72,28 @@ def die(message, code=1):
     raise SystemExit(code)
 
 
+def load_record_input(args):
+    sources = [
+        bool(getattr(args, "from_json", None)),
+        bool(getattr(args, "inline", None)),
+        bool(getattr(args, "from_stdin", False)),
+    ]
+    if sum(sources) != 1:
+        die("Provide exactly one of --from-json, --inline, or --from-stdin.")
+
+    if getattr(args, "from_json", None):
+        raw = Path(args.from_json).read_text(encoding="utf-8")
+    elif getattr(args, "inline", None):
+        raw = args.inline
+    else:
+        raw = sys.stdin.read()
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        die(f"Invalid JSON input: {exc}")
+
+
 def today_iso():
     return date.today().isoformat()
 
@@ -573,7 +595,7 @@ def cmd_add_record(args):
     config = load_config()
     if not args.dry_run and not (config.get("base_token") and config.get("table_id")):
         die("Tracker is not configured. Run init-template first or create config with base_token and table_id.")
-    input_record = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
+    input_record = load_record_input(args)
     fields, missing = coerce_record(input_record, schema)
     if missing:
         die("Missing required fields: " + ", ".join(missing))
@@ -671,7 +693,7 @@ def cmd_transfer_owner_to_user(args):
 def cmd_search_duplicates(args):
     schema = load_schema()
     config = load_config()
-    input_record = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
+    input_record = load_record_input(args)
     company = input_record.get("company") or input_record.get("公司")
     role = input_record.get("role") or input_record.get("岗位名称")
     job_url = input_record.get("job_url") or input_record.get("岗位链接")
@@ -935,7 +957,10 @@ def build_parser():
     p.set_defaults(func=cmd_init_template)
 
     p = sub.add_parser("add-record")
-    p.add_argument("--from-json", required=True)
+    record_input = p.add_mutually_exclusive_group(required=True)
+    record_input.add_argument("--from-json")
+    record_input.add_argument("--inline", help="JSON object text for the application record.")
+    record_input.add_argument("--from-stdin", action="store_true", help="Read the application record JSON from stdin.")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_add_record)
 
@@ -968,7 +993,10 @@ def build_parser():
     p.set_defaults(func=cmd_transfer_owner_to_user)
 
     p = sub.add_parser("search-duplicates")
-    p.add_argument("--from-json", required=True)
+    record_input = p.add_mutually_exclusive_group(required=True)
+    record_input.add_argument("--from-json")
+    record_input.add_argument("--inline", help="JSON object text for the application record.")
+    record_input.add_argument("--from-stdin", action="store_true", help="Read the application record JSON from stdin.")
     p.add_argument("--page-size", type=int, default=20)
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_search_duplicates)

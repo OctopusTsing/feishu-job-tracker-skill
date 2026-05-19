@@ -36,7 +36,7 @@ Bind the agent:
 lark-cli config bind --source hermes --identity user-default
 ```
 
-`user-default` is recommended over `bot-only` because bitable record writes require user identity. If using another agent runtime, replace `--source hermes` with the appropriate value.
+`user-default` is recommended over `bot-only` because bitable record writes require user identity. If using another agent runtime, replace `--source hermes` with the appropriate source label for that runtime.
 
 ### Step 2: Complete user authorization (single-shot, do not restart)
 
@@ -222,14 +222,26 @@ The auth login didn't complete. Check `lark-cli auth status` — if `identity` i
 
 ### Diagnosing dual lark-cli configs
 
-The most common root cause is two different apps:
+The most common root cause is two different apps. Compare the app used by the user's local CLI with the app used by the agent runtime:
 
 ```bash
-echo "=== Local ===" && cat ~/.lark-cli/config.json | python3 -c "import json,sys; print(json.load(sys.stdin)['apps'][0]['appId'])"
-echo "=== Hermes ===" && cat ~/.lark-cli/hermes/config.json | python3 -c "import json,sys; print(json.load(sys.stdin)['apps'][0]['appId'])"
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+for label, path in [
+    ("local", Path.home() / ".lark-cli" / "config.json"),
+    ("agent", Path.home() / ".lark-cli" / "hermes" / "config.json"),
+]:
+    if path.exists():
+        data = json.loads(path.read_text())
+        print(label, data["apps"][0]["appId"])
+    else:
+        print(label, "missing", path)
+PY
 ```
 
-If they differ, that explains permission errors. The Hermes app must be the one completing both bind and auth login.
+If they differ, that explains permission errors. The agent runtime app must be the one completing both bind and auth login.
 
 ## Safety
 

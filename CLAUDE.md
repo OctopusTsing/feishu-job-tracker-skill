@@ -1,6 +1,8 @@
 # Claude Code Instructions
 
-Use this folder as a Claude-compatible skill for Feishu job application tracking. Read `SKILL.md`, then run:
+This file is a thin Claude Code entrypoint. The canonical workflow lives in `SKILL.md`; general agent rules live in `AGENTS.md`.
+
+Read `SKILL.md` first, then run deterministic operations through:
 
 ```bash
 python3 scripts/tracker.py <command>

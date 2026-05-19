@@ -15,7 +15,7 @@
 - 📅 **下一步跟踪**：自动维护下一步动作和下一步日期，例如“7 天后检查反馈”“下周三参加一面”。
 - 📊 **周报复盘**：读取表格生成投递总数、状态分布、面试中岗位、过期待办和长期无响应岗位。
 - 🛠️ **预检与修复**：检查 `lark-cli`、用户授权、Base 权限和模板字段，支持修复已有表。
-- 🤖 **多 Agent 入口**：支持 Codex、Claude Code、Gemini CLI、OpenClaw、Hermes 和通用 shell-capable Agent。
+- 🤖 **多 Agent 兼容**：Codex 使用标准 skill 入口；Claude Code、Gemini CLI、OpenClaw、Hermes 和通用 shell-capable Agent 可直接读取 `SKILL.md`/`AGENTS.md`。
 
 ## 用户怎么说
 
@@ -48,11 +48,8 @@
 ### 1. 判断运行环境
 
 - **Codex**：把 skill 安装到 `~/.codex/skills`。
-- **Claude Code**：保留本目录，并读取 `CLAUDE.md`。
-- **Gemini CLI**：保留本目录，并读取 `GEMINI.md`。
-- **OpenClaw**：保留本目录，并读取 `OPENCLAW.md`。
-- **Hermes**：保留本目录，并读取 `HERMES.md`。
-- **通用 Agent**：读取 `AGENTS.md` 和 `SKILL.md`。
+- **Claude Code**：保留本目录，读取 `CLAUDE.md`，再按 `SKILL.md` 执行。
+- **Gemini CLI / OpenClaw / Hermes / 通用 Agent**：保留本目录，读取 `SKILL.md` 和 `AGENTS.md`。
 
 ### 2. 为 Codex 安装
 
@@ -192,13 +189,11 @@ python3 scripts/install_skill.py --target codex
 python3 scripts/install_skill.py --target codex --mode copy
 ```
 
-如果使用 Claude Code、Gemini CLI、OpenClaw、Hermes 或其他通用 Agent，可以让 Agent 读取本目录下对应入口文件：
+如果使用 Claude Code、Gemini CLI、OpenClaw、Hermes 或其他通用 Agent，可以让 Agent 读取本目录中的通用入口：
 
 - `CLAUDE.md`
-- `GEMINI.md`
-- `OPENCLAW.md`
-- `HERMES.md`
 - `AGENTS.md`
+- `SKILL.md`
 
 真正执行确定性操作的始终是：
 
@@ -334,11 +329,8 @@ python3 scripts/tracker.py delete-record --record-id <record_id>
 入口文件：
 
 - `SKILL.md`：Codex 和通用 skill loader
-- `CLAUDE.md`：Claude Code
-- `GEMINI.md`：Gemini CLI
-- `OPENCLAW.md`：OpenClaw
-- `HERMES.md`：Hermes
-- `AGENTS.md`：通用 Agent
+- `CLAUDE.md`：Claude Code 薄入口，指向 `SKILL.md`
+- `AGENTS.md`：通用 Agent 规则，适合 Gemini CLI、OpenClaw、Hermes 等 shell-capable Agent 搭配 `SKILL.md` 使用
 
 所有 Agent 都应把确定性操作交给：
 

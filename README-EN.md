@@ -15,7 +15,7 @@ Users talk to their agent in natural language, and the agent calls `lark-cli` to
 - 📅 **Next-step tracking**: maintains next actions and next dates, such as "check feedback in 7 days" or "attend first interview next Wednesday".
 - 📊 **Weekly review**: summarizes total applications, status distribution, active interviews, overdue tasks, and stale applications.
 - 🛠️ **Preflight and repair**: checks `lark-cli`, user auth, Base permissions, and table fields, and can repair existing templates.
-- 🤖 **Multi-agent entries**: supports Codex, Claude Code, Gemini CLI, OpenClaw, Hermes, and generic shell-capable agents.
+- 🤖 **Multi-agent compatibility**: Codex uses the standard skill entry; Claude Code, Gemini CLI, OpenClaw, Hermes, and generic shell-capable agents can read `SKILL.md`/`AGENTS.md`.
 
 ## How Users Talk To The Agent
 
@@ -48,11 +48,8 @@ If you are an AI coding agent reading this README, follow this sequence.
 ### 1. Identify The Runtime
 
 - **Codex**: install the skill into `~/.codex/skills`.
-- **Claude Code**: keep this folder available and read `CLAUDE.md`.
-- **Gemini CLI**: keep this folder available and read `GEMINI.md`.
-- **OpenClaw**: keep this folder available and read `OPENCLAW.md`.
-- **Hermes**: keep this folder available and read `HERMES.md`.
-- **Generic agent**: read `AGENTS.md` and `SKILL.md`.
+- **Claude Code**: keep this folder available, read `CLAUDE.md`, then follow `SKILL.md`.
+- **Gemini CLI / OpenClaw / Hermes / Generic agent**: keep this folder available and read `SKILL.md` plus `AGENTS.md`.
 
 ### 2. Install For Codex
 
@@ -241,13 +238,11 @@ Use `--mode copy` if you prefer copying instead of symlinking:
 python3 scripts/install_skill.py --target codex --mode copy
 ```
 
-For Claude Code, Gemini CLI, OpenClaw, Hermes, or generic agents, point the agent at this folder and its runtime-specific entry file:
+For Claude Code, Gemini CLI, OpenClaw, Hermes, or generic agents, point the agent at this folder and the shared entry files:
 
 - `CLAUDE.md`
-- `GEMINI.md`
-- `OPENCLAW.md`
-- `HERMES.md`
 - `AGENTS.md`
+- `SKILL.md`
 
 The deterministic implementation is always:
 
@@ -341,11 +336,8 @@ This repository is intentionally runtime-neutral.
 Agent entry files:
 
 - `SKILL.md` for Codex and general skill loaders
-- `CLAUDE.md` for Claude Code
-- `GEMINI.md` for Gemini CLI
-- `OPENCLAW.md` for OpenClaw
-- `HERMES.md` for Hermes
-- `AGENTS.md` for generic agents
+- `CLAUDE.md` as a thin Claude Code entrypoint that points back to `SKILL.md`
+- `AGENTS.md` for generic agent rules; use it with `SKILL.md` for Gemini CLI, OpenClaw, Hermes, and other shell-capable agents
 
 All agents should delegate deterministic operations to:
 

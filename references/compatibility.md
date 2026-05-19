@@ -6,16 +6,16 @@ This skill is runtime-neutral. Any AI tool can use it if it can:
 2. Run shell commands.
 3. Ask the user for confirmation before writes.
 
-Recommended adapters:
+Recommended entrypoints:
 
 | Runtime | Entry file |
 | --- | --- |
 | Codex | `SKILL.md` |
 | Claude Code | `CLAUDE.md` |
-| Gemini CLI | `GEMINI.md` |
-| OpenClaw | `OPENCLAW.md` |
-| Hermes | `HERMES.md` |
-| Generic agents | `AGENTS.md` |
+| Gemini CLI | `SKILL.md` and `AGENTS.md` |
+| OpenClaw | `SKILL.md` and `AGENTS.md` |
+| Hermes | `SKILL.md` and `AGENTS.md` |
+| Generic agents | `SKILL.md` and `AGENTS.md` |
 
 All adapters should delegate to:
 
@@ -23,4 +23,4 @@ All adapters should delegate to:
 python3 scripts/tracker.py
 ```
 
-Do not fork separate implementations per runtime. Keep schemas, validation, and Lark CLI calls centralized in the script.
+Do not fork separate Markdown instructions or implementations per runtime unless a runtime has a real discovery requirement. Keep schemas, validation, and Lark CLI calls centralized in the script.

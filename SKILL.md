@@ -15,6 +15,63 @@ python3 scripts/tracker.py <command> [options]
 
 Prefer `--dry-run` before any write. Show the user the proposed fields before creating or updating Feishu records.
 
+## First-Time Setup (Read This Before Bootstrapping)
+
+Two prerequisites MUST be satisfied before `bootstrap` or any write command will work.
+
+### Step 1: Bind lark-cli to the agent workspace
+
+lark-cli uses **separate config files per workspace**. The user's local terminal and the agent runtime each have their own app:
+
+| Config file | Purpose |
+| --- | --- |
+| `~/.lark-cli/config.json` | User's local terminal sessions |
+| `~/.lark-cli/<workspace>/config.json` | Agent (e.g. `hermes` workspace) |
+
+**These are different apps with different credentials.** Do NOT copy `config.json` from one to the other — tables created by one app are inaccessible to the other (error 91403 Forbidden).
+
+Bind the agent:
+
+```bash
+lark-cli config bind --source hermes --identity user-default
+```
+
+`user-default` is recommended over `bot-only` because bitable record writes require user identity. If using another agent runtime, replace `--source hermes` with the appropriate value.
+
+### Step 2: Complete user authorization (single-shot, do not restart)
+
+```bash
+lark-cli auth login --recommend
+```
+
+This uses device-code flow. It prints a verification URL and blocks waiting for the user.
+
+IMPORTANT: The device code is **single-use**. Every time you restart this command, the previous code is invalidated. Do NOT retry with a short timeout and re-launch. If your runtime doesn't support long-blocking, use:
+
+```bash
+lark-cli auth login --no-wait --json      # get device_code first
+lark-cli auth login --device-code <code>   # resume polling
+```
+
+If the verification URL doesn't appear on stdout/stderr, your runtime probably needs PTY mode. Run with `pty=true` or in an interactive terminal.
+
+Verify success:
+
+```bash
+lark-cli auth status
+```
+
+You should see `identity: user` with a non-empty `userOpenId` and `userName`.
+
+### Step 3: Bootstrap the tracker
+
+Only after step 2 succeeds:
+
+```bash
+python3 scripts/tracker.py bootstrap --dry-run
+python3 scripts/tracker.py bootstrap
+```
+
 ## Workflow
 
 1. Check prerequisites:
@@ -101,26 +158,78 @@ Useful optional fields:
 - `岗位类型`
 - `方向`
 - `城市`
-- `工作模式`
 - `优先级`
 - `匹配度`
-- `风险信号`
 - `投递日期`
 - `下一步动作`
 - `下一步日期`
+- `工作模式`
 - `简历版本`
 - `联系人/HR`
 - `JD 摘要`
 - `JD 原文`
+- `风险信号`
 - `AI 备注`
-- `面试准备`
 - `结果原因`
+- `备注`
 
 Normalize status with:
 
 ```bash
 python3 scripts/tracker.py normalize-status "腾讯那个产品实习进一面了"
 ```
+
+## Troubleshooting
+
+### "lark-cli is not bound to hermes" / auth_status shows binding error
+
+Run:
+
+```bash
+lark-cli config bind --source hermes --identity user-default
+```
+
+Then complete user auth before proceeding.
+
+### "need_user_authorization" after lark-cli config bind
+
+User login hasn't been completed yet. Run `lark-cli auth login --recommend` (requires PTY or long timeout — see Step 2 above). Verify with `lark-cli auth status`.
+
+### "API error: 91403 Forbidden" on write operations
+
+Most common cause: **wrong app_id**. The user may be logged in under a different app (local `config.json`) than the one that created this table. Check:
+
+```bash
+lark-cli auth status          # shows current appId
+cat ~/.feishu-job-tracker.json | python3 -c "import json,sys; c=json.load(sys.stdin); print(c.get('base_token'))"
+```
+
+If the app IDs differ, the table was created by a different app and the current one has no access. Fix by deleting `~/.feishu-job-tracker.json` and running `bootstrap` again to create a fresh table with the current app.
+
+### "API error: 1063002 Permission denied" during transfer-owner-to-user
+
+The bot app lacks `drive:permission.members.transfer_owner` scope or document management permission. Fastest fix: delete `~/.feishu-job-tracker.json` and re-run `bootstrap` to create a new table where the bot owns it and can manage it from the start.
+
+### Auth URL doesn't appear / stuck waiting
+
+Your runtime likely requires PTY mode. Try: `lark-cli auth login --recommend` in a PTY-enabled terminal. As an alternative: `lark-cli auth login --no-wait --json` to get a device code, then resume with `lark-cli auth login --device-code <code>`.
+
+NEVER kill and re-launch `auth login --recommend` — each restart invalidates the previous device code, making the user's authorization URL useless.
+
+### "No userOpenId found" after auth login
+
+The auth login didn't complete. Check `lark-cli auth status` — if `identity` is still `bot` and `users` is `null`/empty, the user hasn't clicked confirm in the browser. Re-run auth login in a fresh long-running or PTY session.
+
+### Diagnosing dual lark-cli configs
+
+The most common root cause is two different apps:
+
+```bash
+echo "=== Local ===" && cat ~/.lark-cli/config.json | python3 -c "import json,sys; print(json.load(sys.stdin)['apps'][0]['appId'])"
+echo "=== Hermes ===" && cat ~/.lark-cli/hermes/config.json | python3 -c "import json,sys; print(json.load(sys.stdin)['apps'][0]['appId'])"
+```
+
+If they differ, that explains permission errors. The Hermes app must be the one completing both bind and auth login.
 
 ## Safety
 

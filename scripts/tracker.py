@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "references" / "template-schema.json"
 DEFAULT_CONFIG = Path(os.environ.get("FEISHU_JOB_TRACKER_CONFIG", Path.home() / ".feishu-job-tracker.json"))
 READ_IDENTITY = os.environ.get("FEISHU_JOB_TRACKER_READ_AS", os.environ.get("FEISHU_JOB_TRACKER_AS", "user"))
-WRITE_IDENTITY = os.environ.get("FEISHU_JOB_TRACKER_WRITE_AS", os.environ.get("FEISHU_JOB_TRACKER_AS_WRITE", "bot"))
+WRITE_IDENTITY = os.environ.get("FEISHU_JOB_TRACKER_WRITE_AS", os.environ.get("FEISHU_JOB_TRACKER_AS_WRITE", "auto"))
 
 FIELD_TYPES = {
     "text": 1,
@@ -29,7 +29,8 @@ ENDED_STATUSES = {"Offer", "拒绝", "放弃"}
 ACTIVE_INTERVIEW_STATUSES = {"AI 面试", "一面", "二面", "HR 面"}
 
 STATUS_ALIASES = [
-    ("Offer", ["offer", "oc", "录了", "过了", "拿到"]),
+    ("Offer", ["offer", "录了", "拿到offer", "拿到 offer"]),
+    ("OC", ["oc", "口头offer", "口头 offer", "口头录用"]),
     ("拒绝", ["挂了", "拒了", "没过", "fail", "失败", "不通过"]),
     ("放弃", ["放弃", "不去了", "不投了", "撤回"]),
     ("HR 面", ["hr面", "hr 面", "谈薪", "hr"]),
@@ -171,9 +172,28 @@ def lark_bin():
     return shutil.which("lark-cli") or shutil.which("feishu-cli") or "lark-cli"
 
 
+def resolve_write_identity():
+    """Resolve 'auto' identity: try user first, fall back to bot."""
+    identity = WRITE_IDENTITY
+    if identity != "auto":
+        return identity
+    try:
+        completed = subprocess.run([lark_bin(), "auth", "status"], text=True, capture_output=True, timeout=15)
+        if completed.returncode == 0:
+            status = json.loads(completed.stdout)
+            if status.get("userOpenId"):
+                return "user"
+    except Exception:
+        pass
+    return "bot"
+
+
 def run_lark_api(method, endpoint, data=None, dry_run=False, identity=None):
     cmd = [lark_bin(), "api", method, endpoint, "--format", "json"]
-    identity = identity or (READ_IDENTITY if method == "GET" else WRITE_IDENTITY)
+    if identity is None and method == "GET":
+        identity = READ_IDENTITY
+    elif not identity:
+        identity = resolve_write_identity()
     if identity:
         cmd += ["--as", identity]
     if data is not None:
@@ -194,6 +214,8 @@ def run_lark_base(args, dry_run=False, identity=None, output_format=True):
     if output_format:
         cmd += ["--format", "json"]
     if identity:
+        if identity == "auto":
+            identity = resolve_write_identity()
         cmd += ["--as", identity]
     if dry_run:
         cmd.append("--dry-run")
@@ -335,6 +357,86 @@ def cleanup_default_tables(app_token, keep_table_id, keep_table_name, dry_run=Fa
                 output_format=False,
             ))
     return {"tables": table_result, "operations": operations}
+
+
+def cmd_pre_check(_args):
+    """Comprehensive pre-flight check before bootstrap or any write operation."""
+    issues = []
+    warnings = []
+    result = {
+        "steps": {},
+        "ready": True,
+        "issues": [],
+        "warnings": [],
+    }
+
+    # 1. lark-cli available
+    cli_path = lark_cli_available()
+    result["steps"]["lark_cli"] = {"available": bool(cli_path), "path": cli_path}
+    if not cli_path:
+        issues.append("lark-cli not found in PATH. Install it first.")
+        write_json(result)
+        return
+
+    # 2. Auth status — check app_id, identity, user login
+    try:
+        auth = subprocess.run([lark_bin(), "auth", "status"], text=True, capture_output=True, timeout=15)
+        if auth.returncode != 0:
+            issues.append(f"lark-cli auth status failed (exit {auth.returncode}): {auth.stderr.strip()}")
+            write_json(result)
+            return
+        auth_data = json.loads(auth.stdout)
+    except Exception as exc:
+        issues.append(f"Cannot read auth status: {exc}")
+        write_json(result)
+        return
+
+    result["steps"]["auth"] = {
+        "app_id": auth_data.get("appId"),
+        "identity": auth_data.get("identity"),
+        "user_name": auth_data.get("userName"),
+        "user_open_id": auth_data.get("userOpenId"),
+        "token_status": auth_data.get("tokenStatus"),
+    }
+
+    if auth_data.get("identity") == "bot" and not auth_data.get("userOpenId"):
+        issues.append(
+            "Only bot identity available, no user logged in. "
+            "Run: lark-cli auth login --recommend (requires PTY/interactive terminal) — see SKILL.md Step 2."
+        )
+
+    # 3. Config file consistency (if exists)
+    config = load_config()
+    if config.get("base_token"):
+        result["steps"]["config"] = {"exists": True, "base_token": config["base_token"], "table_id": config.get("table_id")}
+
+        # Test write access with a minimal record
+        try:
+            test_result = subprocess.run(
+                [
+                    lark_bin(), "api", "GET",
+                    f"/open-apis/bitable/v1/apps/{config['base_token']}/tables/{config.get('table_id', '')}/fields",
+                    "--format", "json", "--as", "user",
+                ],
+                text=True, capture_output=True, timeout=30,
+            )
+            if test_result.returncode != 0 or "Forbidden" in test_result.stdout:
+                issues.append(
+                    f"User cannot access table {config.get('base_token')}/{config.get('table_id')}. "
+                    "The table was likely created by a different lark-cli app. "
+                    "Fix: delete ~/.feishu-job-tracker.json and run `tracker.py bootstrap` again."
+                )
+            else:
+                result["steps"]["write_access"] = "OK (user can read table fields)"
+        except Exception as exc:
+            warnings.append(f"Could not test write access: {exc}")
+
+    result["ready"] = len(issues) == 0
+    result["issues"] = issues
+    result["warnings"] = warnings
+    write_json(result)
+    if issues:
+        raise SystemExit(1)
 
 
 def cmd_check(_args):
@@ -762,9 +864,52 @@ def summarize_rows(rows):
     ]
 
 
+def cmd_quickstart(args):
+    """Print an interactive step-by-step setup guide with copy-paste commands."""
+    source = getattr(args, "source", None) or os.environ.get("HERMES_HOME", "").partition("/")[2] or "hermes"
+    steps = [
+        "=== Feishu Job Tracker Quickstart ===",
+        "",
+        f"Step 1 — Bind lark-cli to your agent workspace:",
+        f"  lark-cli config bind --source {source} --identity user-default",
+        "",
+        "Step 2 — Log in as a user (requires interactive terminal / PTY):",
+        "  lark-cli auth login --recommend",
+        "",
+        "  IMPORTANT: The device code is single-use. Do NOT restart this command.",
+        "  It will print a verification URL — open it in your browser and click confirm.",
+        "  If the URL doesn't appear, use PTY mode or:",
+        "    lark-cli auth login --no-wait --json",
+        "    lark-cli auth login --device-code <code_from_above>",
+        "",
+        "Step 3 — Verify your identity:",
+        "  lark-cli auth status",
+        "  (Make sure 'identity' is 'user' and 'userOpenId' is present)",
+        "",
+        "Step 4 — Create the tracker:",
+        f"  python3 {sys.argv[0].replace(os.sep, '/')} bootstrap --dry-run",
+        f"  python3 {sys.argv[0].replace(os.sep, '/')} bootstrap",
+        "",
+        "Step 5 — Verify by listing records:",
+        f"  python3 {sys.argv[0].replace(os.sep, '/')} list-records",
+        "",
+        "If you hit any issues, run pre-check for diagnostics:",
+        f"  python3 {sys.argv[0].replace(os.sep, '/')} pre-check",
+    ]
+    print("\n".join(steps))
+    raise SystemExit(0)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="Feishu/Lark job tracker helper")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("pre-check")
+    p.set_defaults(func=cmd_pre_check)
+
+    p = sub.add_parser("quickstart")
+    p.add_argument("--source")
+    p.set_defaults(func=cmd_quickstart)
 
     p = sub.add_parser("check")
     p.set_defaults(func=cmd_check)
